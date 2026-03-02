@@ -91,7 +91,7 @@ incidents_q = alt.Chart(crime).mark_bar().encode(
     width=650,
     height=380
 )
-display(incidents_q)
+display_altair_png(incidents_q)
 ```
 
 ```{python}
@@ -115,7 +115,7 @@ crime_q_plot_full = alt.Chart(q_rate_full).mark_bar().encode(
     width=700,
     height=380
 )
-display(crime_q_plot_full)
+display_altair_png(crime_q_plot_full)
 ``` 
 
 ```{python}
@@ -134,14 +134,12 @@ incidents_over_time = alt.Chart(incidents_per_month_q).mark_line().encode(
     title="Reported Violent Crimes per Capita Over Time by SVI Quintile, Chicago, 2021–2025",
     width=650,
     height=380)
-display(incidents_over_time)
+display_altair_png(incidents_over_time)
 ```
 
 ```{python}
 cap = float(tract_full["crime_per_1000"].quantile(0.95))
-
 tract_geo = json.loads(tract_full.to_json())
-
 crime_rate_map = (
     alt.Chart(alt.Data(values=tract_geo["features"]))
     .mark_geoshape(stroke="white", strokeWidth=0.25)
@@ -155,6 +153,48 @@ crime_rate_map = (
     .properties(width=820, height=620, title="Chicago Census Tracts — Crime Rate per 1,000 Residents")
     .project(type="mercator")
 )
-
 display_altair_png(crime_rate_map, scale=3)
+```
+
+```{python}
+cap = float(tract_full["crime_per_1000"].quantile(0.95))
+
+tract_geo = json.loads(tract_full.to_json())
+
+map_svi_crime = (
+    alt.Chart(alt.Data(values=tract_geo["features"]))
+    .mark_geoshape(stroke="white", strokeWidth=0.2)
+    .encode(
+        color=alt.Color("properties.svi:Q", title="SVI (0–1)"),
+        opacity=alt.Opacity(
+            "properties.crime_per_1000:Q",
+            title="Crime rate intensity",
+            scale=alt.Scale(domain=[0, cap])))
+    .properties(
+        width=820,
+        height=620,
+        title="Chicago Tracts: SVI (color) with crime-rate intensity (opacity)"
+    )
+    .project(type="mercator")
+)
+display_altair_png(map_svi_crime, scale=3)
+```
+```{python}
+month_q = (
+    crime.dropna(subset=["month", "SVI_quintile"])
+        .groupby(["month", "SVI_quintile"], as_index=False, observed=True)
+        .agg(incidents=("ID", "count")))
+month_q = month_q.merge(pop_by_q_full, on="SVI_quintile", how="left")
+month_q["incidents_per_1000_month"] = (month_q["incidents"] / month_q["pop"]) * 1000
+month_q["incidents_per_1000_annualized"] = month_q["incidents_per_1000_month"] * 12
+heatmap = alt.Chart(month_q).mark_rect().encode(
+    x=alt.X("month:T", title="Month"),
+    y=alt.Y("SVI_quintile:N", title="SVI Quintile", sort=["1","2","3","4","5"]),
+    color=alt.Color("incidents_per_1000_annualized:Q", title="Annualized incidents per 1,000")
+).properties(
+    title="Seasonality by vulnerability: annualized per-capita crime rate (Month × SVI quintile)",
+    width=720,
+    height=240
+)
+display_altair_png(heatmap, scale=3)
 ```
