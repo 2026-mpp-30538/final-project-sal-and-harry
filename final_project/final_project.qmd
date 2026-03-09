@@ -1,0 +1,250 @@
+---
+title: "Data Visualization Final Project - Chicago Violence, SVI and Social Metrics"
+author: "Salvatore 'Sal' Macchione and Harry Franklin"
+date: "March 09, 2026"
+format: 
+  pdf:
+    fontsize: 11pt
+    include-in-header: 
+       text: |
+         \usepackage{fvextra}
+         \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
+include-before-body:
+  text: |
+    \RecustomVerbatimEnvironment{verbatim}{Verbatim}{
+      showspaces = false,
+      showtabs = false,
+      breaksymbolleft={},
+      breaklines
+    }
+output:
+  echo: false
+  eval: false
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+Github Usernames: smacchione, hmfranklin14
+Lecture Section: M/W 9 - 10:20am
+
+# Introduction, Background and Research Question
+From the notorious mob violence of the 1920s to the predominantly gang-related crime of today, Chicago has long been grappling with violent crime. Though crime has overall declined over the last several years, the city still makes regional and national headlines — justifiably or not — for its relatively high rates of violence. Though many analyses and dissections of crime in Chicago have been done, there exists a gap in existing data as it pertains to a key question 
+How effective are social vulnerability, mental, and developmental factors in predicting crime across Chicago?
+
+In this regard, our project examines the relationship between violent crime and social vulnerability across Chicago neighborhoods using data from the Center for Disease Control and Prevention (CDC), the Chicago Health Atlas, and the Chicago Police Department's Citizen Law Enforcement Analysis and Reporting (CLEAR) database. More specifically, we ask whether violent crime rates are systematically higher in census tracts and zip codes with greater social vulnerability, and whether that relationship becomes especially pronounced at the upper end of the vulnerability distribution. We also explore how related ZIP-code-level public health and hardship measures align with these spatial patterns in our Streamlit application. In doing so, we aim to shed light on how to better target anti-crime and anti-poverty interventions, and how to best utilize existing measures to predict crime and allocate resources.
+
+## SVI and Crime in Chicago
+We first combined incident-level violent crime data for Chicago from 2021–2025 with census-tract SVI values and population data to examine how crime varies across geographies. After cleaning and standardizing the data, we converted crime dates into a monthly time series and merged tract-level measures to enable geographic comparisons. Given that geographies have varying populations (and thus make it so raw crime incidence can't be directly compares), we focused primarily on population-adjusted measures, calculating annualized and monthly violent crime rates per 1,000 residents. To analyze how vulnerability relates to crime, we first grouped tracts into standard SVI quintiles and then created additional upper-tail bins (81–95, 95–98, 98–99, and 99+) to better capture variation among the most socially vulnerable areas and determine whether the most vulnerable populations disproportionatly commit more violent crime (thus skewing the top quintile). 
+
+### Figure 1: 
+```{python}
+#echo: false
+#eval: true
+
+#libraries and plugins
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import altair as alt 
+import os
+import seaborn as sns 
+import geopandas as gpd
+from shapely.geometry import Point
+import json
+from pathlib import Path
+
+#settings
+pd.set_option('display.max_columns', None)
+pd.set_option("display.max_colwidth", None)
+pd.set_option("display.width", None)
+
+#extra settings
+import warnings 
+warnings.filterwarnings('ignore')
+alt.renderers.enable("png")
+alt.data_transformers.disable_max_rows()
+
+import tempfile 
+from IPython.display import SVG, display, Image
+import vl_convert as vlc
+
+def display_altair_png(chart, scale=2):
+    """
+    Render an Altair chart to a PNG and display it inline.
+
+    Parameters
+    ----------
+    chart : altair.Chart
+        Altair chart object to render.
+    scale : int, optional
+        Resolution scaling factor for the PNG (default = 2). Use scale=2 for standard slides. Use scale = 3–4 for dense figures or PDF exports.
+    """
+    png_bytes = vlc.vegalite_to_png(chart.to_dict(), scale=scale)
+
+    # Write to a temporary PNG file and display
+    with tempfile.NamedTemporaryFile(suffix=".png") as tmp:
+        tmp.write(png_bytes)
+        tmp.flush()
+        display(Image(filename=tmp.name))
+
+#additional cleaning and adjustments
+from pathlib import Path
+
+base_path = Path.cwd().parent
+DATA_DIR = base_path / "data"
+RAW_DIR = DATA_DIR / "raw-data"
+DERIVED_DIR = DATA_DIR / "derived-data"
+    
+crime = pd.read_csv(DERIVED_DIR / "crime_svi_merge_no_na.csv")
+tracts = gpd.read_file(
+    RAW_DIR / "Census_Tracts_20260228/geo_export_89c4b171-2783-4715-9b7d-e49f753f00f0.shp"
+)
+crimes_with_tracts = gpd.read_file(DERIVED_DIR / "crimes_with_tracts.csv")
+tract_full = gpd.read_file(DERIVED_DIR / "tract_full.geojson")
+
+#adding and fixing date(s)
+crime["Date"] = pd.to_datetime(crime["Date"], errors="coerce")
+crime["month"] = crime["Date"].dt.to_period("M").dt.to_timestamp()
+
+#adding quintiles for SVI and in tract_full 
+crime["SVI_quintile"] = pd.cut(
+    crime["SVI"],
+    bins=[0, 0.2, 0.4, 0.6, 0.8, 1.0],
+    labels=["1", "2", "3", "4", "5"],
+    include_lowest=True)
+
+#tract full 
+tract_full["SVI_quintile"] = pd.cut(
+    tract_full["svi"],
+    bins=[0, 0.2, 0.4, 0.6, 0.8, 1.0],
+    labels=["1", "2", "3", "4", "5"],
+    include_lowest=False)
+#replace NA with 0 that are ignored
+tract_full["pop"] = tract_full["pop"].fillna(0)
+
+crime = crime.dropna(subset=["SVI_quintile"])
+pop_by_q_full = (
+    tract_full.dropna(subset=["pop", "SVI_quintile"])
+              .groupby("SVI_quintile", as_index=False, observed=True)
+              .agg(pop=("pop", "sum")))
+crime_q = (
+    crime.dropna(subset=["SVI_quintile"])
+         .groupby("SVI_quintile", as_index=False, observed=True)
+         .agg(incidents=("ID", "count")))
+
+incidents_per_month_q = (
+    crime.dropna(subset=["month", "SVI_quintile"])
+        .groupby(["month", "SVI_quintile"], as_index=False, observed=True)
+        .agg(incidents=("ID", "count")))
+incidents_per_month_q = incidents_per_month_q.merge(pop_by_q_full, on="SVI_quintile", how="left")
+incidents_per_month_q["incidents_per_1000"] = (incidents_per_month_q["incidents"] / incidents_per_month_q["pop"]) * 1000
+incidents_over_time = alt.Chart(incidents_per_month_q).mark_line().encode(
+    x=alt.X("month:T", title="Month"),
+    y=alt.Y("incidents_per_1000:Q", title="Incidents per 1,000 residents (monthly)"),
+           color=alt.Color(
+            "SVI_quintile:N",
+            title="SVI Ranges, Least to Most Vulnerable",
+            sort=["1","2","3","4","5"],
+            scale=alt.Scale(scheme="tealblues"))).properties(
+    title="Reported Violent Crimes per Capita Over Time by SVI Quintile, Chicago, 2021–2025",
+    width=700,
+    height=300)
+display_altair_png(incidents_over_time)
+```
+
+### Figure 2: 
+```{python}
+#echo: false
+#eval: true
+
+# per-capita over time with expanded top-end SVI bins
+
+p95 = tract_full["svi"].quantile(0.95)
+p98 = tract_full["svi"].quantile(0.98)
+p99 = tract_full["svi"].quantile(0.99)
+
+def assign_svi_extreme_bin(svi):
+    if pd.isna(svi):
+        return np.nan
+    elif svi <= 0.2:
+        return "0–20"
+    elif svi <= 0.4:
+        return "21–40"
+    elif svi <= 0.6:
+        return "41–60"
+    elif svi <= 0.8:
+        return "61–80"
+    elif svi < p95:
+        return "81–95"
+    elif svi < p98:
+        return "95–98"
+    elif svi < p99:
+        return "98–99"
+    else:
+        return "99+"
+extreme_bins_order = ["0–20", "21–40", "41–60", "61–80", "81–95", "95–98", "98–99", "99+"]
+tract_full["SVI_range_extreme"] = tract_full["svi"].apply(assign_svi_extreme_bin)
+tract_full["SVI_range_extreme"] = pd.Categorical(
+    tract_full["SVI_range_extreme"],
+    categories=extreme_bins_order,
+    ordered=True)
+crime_rev1 = crime.copy()
+crime_rev1["SVI_range_extreme"] = crime_rev1["SVI"].apply(assign_svi_extreme_bin)
+crime_rev1["SVI_range_extreme"] = pd.Categorical(
+    crime_rev1["SVI_range_extreme"],
+    categories=extreme_bins_order,
+    ordered=True)
+pop_by_extreme = (
+    tract_full.dropna(subset=["SVI_range_extreme", "pop"])
+    .groupby("SVI_range_extreme", as_index=False, observed=True)
+    .agg(pop=("pop", "sum")))
+
+# monthly incident counts by extended bin
+extreme_month_counts = (
+    crime_rev1.dropna(subset=["SVI_range_extreme", "month"])
+    .groupby(["month", "SVI_range_extreme"], as_index=False, observed=True)
+    .agg(incidents=("ID", "count")))
+extreme_month_counts = extreme_month_counts.merge(
+    pop_by_extreme,
+    on="SVI_range_extreme",
+    how="left")
+
+extreme_month_counts["incidents_per_1000"] = (extreme_month_counts["incidents"] / extreme_month_counts["pop"]) * 1000
+
+#just top bins,
+extreme_bin_plot_over_time_top = (
+    alt.Chart(extreme_month_counts[extreme_month_counts["SVI_range_extreme"].isin(["81–95", "95–98", "98–99", "99+"])])
+    .mark_line(strokeWidth=3)
+    .encode(
+        x=alt.X("month:T", title="Month"),
+        y=alt.Y("incidents_per_1000:Q", title="Incidents per 1,000 residents (monthly)"),
+        color=alt.Color(
+            "SVI_range_extreme:N",
+            title="SVI Ranges, Least-Most Vulnerable",
+            sort=["81–95", "95–98", "98–99", "99+"],
+            scale=alt.Scale(scheme="tealblues")))
+    .properties(
+        title="Reported Violent Crimes per Capita Over Time by SVI Range, Chicago, 2021–2025 (Top Bins)",
+        width=700,
+        height=300))
+display_altair_png(extreme_bin_plot_over_time_top)
+```
+
+Looking at figure 1, we see that violent crime incidence per capita is generally higher in more vulnerable (i.e. higher SVI) areas, with the most vulnerable quintile (quintile 5) having a substantially higher crime rate than the other four quintiles. Crime rate increases as vulnerability quintile increases. Though this is not inherently surprising, the top quintile (i.e. most vulnerable) nearly doubled the crime rate of the next-most vulnerable quintile — a dramatic increase that suggests the most vulnerable are far more likely to commit violent crime. To identify if the highest SVI percentiles were the driving force behind this, we created additional bins. Looking at figure 2, we see that, while the 81st-95th percentile bin is has lower crime rates than 95+, there isn't a significant difference between 95-98, 98-99, and 99+. As such, it appears the most vulnerable 5% of census tracts are driving the disproportionate crime rates in the top quintile, but that there isn't a significant difference in crime rates among the most vulnerable 5% of tracts.
+
+#Harry's Code Here~~~~
+
+After calculating the crime rate per 1,000 residents in each zip code, we calculated the correlation between the crime rate and each of our indicators of interest using two methods: the Pearson correlation coefficient and Spearman’s rank correlation coefficient, the latter being a nonparametric measure to account for potential nonlinear relationships. In our initial calculations, we found no evidence of strong correlation in any of the variables except Behavioral Health-Related Hospitalizations. Visualizing the data, we saw that three specific zip codes in the Loop (60602, 60603, and 60604) had low levels of social vulnerability across all the indicators but crime rates over 3X almost any other zip code. Given the numerous luxury apartment spaces in this area as well as the high density of people coming to the Loop every day who don’t live in those zip codes, it makes sense that these regions would be outliers in our data, and we removed these points from our analysis to account for this.
+                 
+After removing these three points, the absolute value of both the Pearson and Spearman coefficients for all our indicators were over .5, indicating at least moderate correlation with the crime rate across the rest of the zip codes in the city. In the bar graph below, we can see that Behavioral Health-related Hospitalizations, Self-reported Mental Health and Self-reported Lacking Social/Emotional Support show the strongest correlations with a steep drop-off for the three index values. Somewhat surprisingly, this indicates that single-value statistics, including several self-reported measures, may be more accurate in predicting rates of crime, compared to index values that aggregate a range of statistics around poverty and social vulnerability.
+
+#Dashboard Link Here~~~~
+
+To better understand how rates of violent crime were distributed around Chicago, we created an interactive graph that charts the monthly crime rate from 2021-2025. The graph can also be split into different zip code percentile groups (ordered from lowest crime rate to highest). The model highlights that the top 5% of zip codes have substantially higher crime rates (with significantly greater seasonal variation in crime rates) than the bottom 95%. The average crime rate for these zip codes throughout the year is almost always over twice the peak values of any other percentile group.
+
+Additionally, we built a Streamlit dashboard that allows the user to explore ZIP-code-level patterns interactively. The dashboard displays a map of Chicago ZIP codes and includes a dropdown menu for selecting a metric, such as crime per 1,000 residents, hardship, childhood opportunity, or behavioral health-related hospitalization measures. A slider highlights the ZIP code whose selected metric is closest to a chosen value, while hovering over a ZIP code reveals a richer set of contextual statistics. Although not at the census tract level (which was necessary given that the tract level missed data), it functions as a useful exploratory and communication tool that allows us to assess the relationship between metrics and crime data directly and spatially.
+
+#conclusion?
+
+
