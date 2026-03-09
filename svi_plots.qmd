@@ -221,7 +221,7 @@ extreme_bin_plot_over_time_top = (
             "SVI_range_extreme:N",
             title="SVI Ranges, Least to Most Vulnerable",
             sort=["81–95", "95–98", "98–99", "99+"],
-            scale=alt.Scale(scheme="reds")))
+            scale=alt.Scale(scheme="tealblues")))
     .properties(
         title="Reported Violent Crimes per Capita Over Time by SVI Range, Chicago, 2021–2025 (Top Bins)",
         width=700,
