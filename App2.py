@@ -2,7 +2,6 @@ from pathlib import Path
 import json
 import numpy as np
 import pandas as pd
-import geopandas as gpd
 import altair as alt
 import streamlit as st
 
@@ -17,7 +16,7 @@ page = st.sidebar.radio("Select Page", ["ZIP-Level Map Dashboard", "Monthly Viol
 # -----------------------------------
 # Define Base Paths (relative to main folder)
 # -----------------------------------
-BASE_PATH = Path(__file__).resolve().parent  # main folder
+BASE_PATH = Path(__file__).resolve().parent
 DATA_DIR = BASE_PATH / "data"
 RAW_DIR = DATA_DIR / "raw-data"
 DERIVED_DIR = DATA_DIR / "derived-data"
@@ -26,20 +25,24 @@ CRIME_PATH = DERIVED_DIR / "Crime.csv"
 ZIP_PATH = RAW_DIR / "zip_bound.geojson"
 
 # -----------------------------------
-# ------------------- Page 1: Sal's ZIP-Level Map Dashboard -------------------
+# Lazy geopandas loader
+# -----------------------------------
+def get_gpd():
+    import geopandas as gpd
+    return gpd
+
+# -----------------------------------
+# ------------------- Page 1: ZIP-Level Map Dashboard -------------------
 # -----------------------------------
 if page == "ZIP-Level Map Dashboard":
 
     @st.cache_data
     def load_crime_data(path):
         crime = pd.read_csv(path)
-
         if "Date" in crime.columns:
             crime["Date"] = pd.to_datetime(crime["Date"], errors="coerce")
-
         if "Zip Code" not in crime.columns:
             raise ValueError("Crime file must contain a 'Zip Code' column.")
-
         crime["Zip Code"] = (
             crime["Zip Code"]
             .astype(str)
@@ -48,7 +51,6 @@ if page == "ZIP-Level Map Dashboard":
         )
         crime = crime[crime["Zip Code"].notna()]
         crime = crime[crime["Zip Code"].str.len() == 5]
-
         if "Arrest" in crime.columns:
             crime["Arrest"] = (
                 crime["Arrest"]
@@ -56,7 +58,6 @@ if page == "ZIP-Level Map Dashboard":
                 .str.lower()
                 .map({"true": 1, "false": 0, "1": 1, "0": 0})
             )
-
         if "Domestic" in crime.columns:
             crime["Domestic"] = (
                 crime["Domestic"]
@@ -64,18 +65,16 @@ if page == "ZIP-Level Map Dashboard":
                 .str.lower()
                 .map({"true": 1, "false": 0, "1": 1, "0": 0})
             )
-
         return crime
 
     @st.cache_data
     def load_zip_geometries(path):
+        gpd = get_gpd()
         zips = gpd.read_file(path)
-
         zip_candidates = [
             "zip", "zipcode", "zip_code", "zip5", "zip_5",
             "postalcode", "zip code", "zcta5ce10", "zip5ce10"
         ]
-
         found = None
         lower_map = {col.lower(): col for col in zips.columns}
         for candidate in zip_candidates:
@@ -84,19 +83,15 @@ if page == "ZIP-Level Map Dashboard":
                 break
         if found is None:
             raise ValueError(f"Could not find a ZIP column in the boundary file. Columns found: {zips.columns.tolist()}")
-
         zips["zip_join"] = (
             zips[found].astype(str)
             .str.extract(r"(\d+)", expand=False)
             .str.zfill(5)
         )
-
         if zips.crs is not None and str(zips.crs) != "EPSG:4326":
             zips = zips.to_crs(epsg=4326)
-
         zips = zips[zips.geometry.notna()].copy()
         zips["geometry"] = zips.geometry.buffer(0)
-
         return zips
 
     def metric_definition(metric_name):
@@ -188,7 +183,6 @@ if page == "ZIP-Level Map Dashboard":
         plot_gdf = map_gdf.copy()
         if highlight_enabled:
             valid = plot_gdf[selected_metric].notna()
-
             if valid.sum() == 0:
                 plot_gdf["selected_zip"] = False
                 selected_zip = None
@@ -200,12 +194,10 @@ if page == "ZIP-Level Map Dashboard":
                 selected_metric_value = plot_gdf.loc[selected_idx, selected_metric]
                 plot_gdf["selected_zip"] = plot_gdf["zip_join"] == selected_zip
         else:
-    # Highlighting disabled: no ZIP is selected
             plot_gdf["selected_zip"] = False
             selected_zip = None
             selected_metric_value = None
 
-# Set Altair opacity depending on highlight setting
         opacity_value = (
             alt.condition("datum.properties.selected_zip", alt.value(1.0), alt.value(0.25))
             if highlight_enabled else alt.value(1.0)
@@ -253,7 +245,7 @@ if page == "ZIP-Level Map Dashboard":
         return base + highlight, selected_zip, selected_metric_value
 
     # -----------------------------------
-    # Load Data
+    # Load Data (geopandas lazy-loaded here)
     # -----------------------------------
     crime = load_crime_data(CRIME_PATH)
     zip_shapes = load_zip_geometries(ZIP_PATH)
@@ -273,7 +265,6 @@ if page == "ZIP-Level Map Dashboard":
     default_metric = "crime_per_1000" if "crime_per_1000" in metric_options else metric_options[0]
 
     left_col, right_col = st.columns([1, 2])
-
     with left_col:
         selected_metric = st.selectbox(
             "Choose a ZIP-level metric",
@@ -303,11 +294,10 @@ if page == "ZIP-Level Map Dashboard":
             value=True,
             help="When enabled, the ZIP closest to the slider value is highlighted and others are faded. "
                 "When disabled, all ZIPs use normal heatmap coloring."
-)
+        )
 
         st.markdown("### Metric definition")
         st.info(metric_definition(selected_metric))
-
         st.markdown("### How to read this")
         st.write(
             "All crime data is from 2021-2025. Survey measurements are from 2023. "
@@ -338,8 +328,8 @@ if page == "ZIP-Level Map Dashboard":
             display_cols = [
                 c for c in [
                     "zip_code","incidents","population","crime_per_1000","arrest_rate",
-                    "domestic_rate","poor_mental_health","lack_social_support",
-                    "child_opportunity_index","hardship_index","behavioral_hosp"
+                    "domestic_rate","poor_mental_health","lack_social_support","child_opportunity_index",
+                    "hardship_index","behavioral_hosp"
                 ] if c in selected_row.columns
             ]
             st.dataframe(selected_row[display_cols], use_container_width=True, hide_index=True)
@@ -366,7 +356,6 @@ if page == "ZIP-Level Map Dashboard":
 # ------------------- Page 2: Monthly Violent Crime Dashboard -------------------
 # -----------------------------------
 elif page == "Monthly Violent Crime Dashboard":
-
     @st.cache_data
     def load_crime_data_monthly():
         df = pd.read_csv(CRIME_PATH, parse_dates=["Date"])
