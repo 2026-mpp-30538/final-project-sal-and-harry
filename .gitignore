@@ -8,3 +8,4 @@ data/derived-data/crimes_with_tracts.csv
 data/derived-data/crime_svi_merge.csv
 data/derived-data/crime_svi_merge_no_na.csv
 .DS_Store
+.DS_Store
