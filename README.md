@@ -3,11 +3,11 @@
 This project anaysis looks at the intersection between Social Vulnerability Index (SVI) data, Health Atlas measures, and violent crime in Chicago. 
 
 ## Data Sources 
-1) Chicago Health Atlas: https://chicagohealthatlas.org/indicators \n
+1) Chicago Health Atlas: https://chicagohealthatlas.org/indicators — 
 Provides ZIP-code-level social and health indicators including: Poor mental health prevalence, lack of social/emotional support, Childhood Opportunity Index, Hardship Index, Behavioral health hospitalization rates. Analyzed to assess violence predictivity of self-reported and professionally aggregated metrics. These variables are used in the Streamlit dashboard.
-2) Chicago Police Department CLEAR: https://data.cityofchicago.org/Public-Safety/Crimes-2001-to-Present/ijzp-q8t2/about_data \n
+2) Chicago Police Department CLEAR: https://data.cityofchicago.org/Public-Safety/Crimes-2001-to-Present/ijzp-q8t2/about_data —
 Filtered to 2021-2025 and only violent crime: Sexual Assault, Assault, Battery, and Homicide. Includes and sorted by date/time, geography (latitute and logitude), and offense type and details.
-3) CDC SVI: https://www.atsdr.cdc.gov/place-health/php/svi/index.html \n
+3) CDC SVI: https://www.atsdr.cdc.gov/place-health/php/svi/index.html —
 2022 Illinois dataset; measures the vulnerability of communities based on: socioeconomic status, demographic information, household composition, housing characteristics, and access to transportation. We use census-tract and ZIP-code-level SVI scores to group neighborhoods into vulnerability categories.
 
 ### Important: Required Large Files *not* in Github Repo that Must be Installed: 
