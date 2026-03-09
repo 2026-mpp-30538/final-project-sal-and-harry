@@ -488,5 +488,7 @@ elif page == "Monthly Violent Crime Dashboard":
     For example, setting the first slider at **20%** and a second slider at **60%** would create three lines:
     - the monthly crime rate for the **20% of zip codes with the lowest crime rate**
     - the monthly crime rate for zip codes in the **20%–60% range**
-    - the monthly crime rate for the remaining 40% of zip codes with the highest crime rates
+    - the monthly crime rate for the remaining **40% of zip codes with the highest crime rates**
+    
+    To view the total crime rate across all zip codes, simply set the first slider to 100%.
     """)
