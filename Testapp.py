@@ -184,19 +184,32 @@ if page == "ZIP-Level Map Dashboard":
         }
         return labels.get(metric_name, metric_name)
 
-    def make_zip_map(map_gdf, selected_metric, slider_value):
+    def make_zip_map(map_gdf, selected_metric, slider_value, highlight_enabled=True):
         plot_gdf = map_gdf.copy()
-        valid = plot_gdf[selected_metric].notna()
-        if valid.sum() == 0:
+        if highlight_enabled:
+            valid = plot_gdf[selected_metric].notna()
+
+            if valid.sum() == 0:
+                plot_gdf["selected_zip"] = False
+                selected_zip = None
+                selected_metric_value = None
+            else:
+                diffs = (plot_gdf.loc[valid, selected_metric] - slider_value).abs()
+                selected_idx = diffs.idxmin()
+                selected_zip = plot_gdf.loc[selected_idx, "zip_join"]
+                selected_metric_value = plot_gdf.loc[selected_idx, selected_metric]
+                plot_gdf["selected_zip"] = plot_gdf["zip_join"] == selected_zip
+        else:
+    # Highlighting disabled: no ZIP is selected
             plot_gdf["selected_zip"] = False
             selected_zip = None
             selected_metric_value = None
-        else:
-            diffs = (plot_gdf.loc[valid, selected_metric] - slider_value).abs()
-            selected_idx = diffs.idxmin()
-            selected_zip = plot_gdf.loc[selected_idx, "zip_join"]
-            selected_metric_value = plot_gdf.loc[selected_idx, selected_metric]
-            plot_gdf["selected_zip"] = plot_gdf["zip_join"] == selected_zip
+
+# Set Altair opacity depending on highlight setting
+        opacity_value = (
+            alt.condition("datum.properties.selected_zip", alt.value(1.0), alt.value(0.25))
+            if highlight_enabled else alt.value(1.0)
+        )
         plot_gdf["metric_value"] = plot_gdf[selected_metric]
 
         plot_gdf_json = plot_gdf.copy()
@@ -210,7 +223,7 @@ if page == "ZIP-Level Map Dashboard":
             .encode(
                 color=alt.Color("properties.metric_value:Q", title=metric_label(selected_metric),
                                 scale=alt.Scale(scheme="blues")),
-                opacity=alt.condition("datum.properties.selected_zip", alt.value(1.0), alt.value(0.25)),
+                opacity=opacity_value,
                 tooltip=[
                     alt.Tooltip("properties.zip_join:N", title="ZIP"),
                     alt.Tooltip("properties.incidents:Q", title="Incidents", format=",.0f"),
@@ -285,6 +298,13 @@ if page == "ZIP-Level Map Dashboard":
             value=slider_default
         )
 
+        highlight_enabled = st.checkbox(
+            "Enable ZIP highlight for slider",
+            value=True,
+            help="When enabled, the ZIP closest to the slider value is highlighted and others are faded. "
+                "When disabled, all ZIPs use normal heatmap coloring."
+)
+
         st.markdown("### Metric definition")
         st.info(metric_definition(selected_metric))
 
@@ -299,7 +319,8 @@ if page == "ZIP-Level Map Dashboard":
     zip_map, selected_zip, selected_metric_value = make_zip_map(
         map_gdf=map_gdf,
         selected_metric=selected_metric,
-        slider_value=slider_value
+        slider_value=slider_value,
+        highlight_enabled=highlight_enabled
     )
 
     with right_col:
