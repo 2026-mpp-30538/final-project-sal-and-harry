@@ -233,18 +233,83 @@ display_altair_png(extreme_bin_plot_over_time_top)
 
 Looking at figure 1, we see that violent crime incidence per capita is generally higher in more vulnerable (i.e. higher SVI) areas, with the most vulnerable quintile (quintile 5) having a substantially higher crime rate than the other four quintiles. Crime rate increases as vulnerability quintile increases. Though this is not inherently surprising, the top quintile (i.e. most vulnerable) nearly doubled the crime rate of the next-most vulnerable quintile — a dramatic increase that suggests the most vulnerable are far more likely to commit violent crime. To identify if the highest SVI percentiles were the driving force behind this, we created additional bins. Looking at figure 2, we see that, while the 81st-95th percentile bin is has lower crime rates than 95+, there isn't a significant difference between 95-98, 98-99, and 99+. As such, it appears the most vulnerable 5% of census tracts are driving the disproportionate crime rates in the top quintile, but that there isn't a significant difference in crime rates among the most vulnerable 5% of tracts.
 
-#Harry's Code Here~~~~
+```{python}
+# echo: false
+# eval: true
+import pandas as pd
+import altair as alt
+import geopandas as gpd
+from shapely.geometry import Point
+import os
+
+zip_data = pd.read_csv("../derived-data/zip_data.csv")
+
+cols = [
+    "CrimeRate",
+    "Poor Mental Health",
+    "Lacking Social/Emotional Support",
+    "Childhood Opportunity Index",
+    "Behavioral Health-related Hospitalizations",
+    "Hardship Index",
+    "Social Vulnerability Index"
+]
+
+zip_data[cols] = zip_data[cols].apply(pd.to_numeric, errors="coerce")
+
+zip_data_clean = zip_data[zip_data["CrimeRate"] <= 150]
+
+corr = zip_data_clean.corr(numeric_only=True)["CrimeRate"].sort_values(ascending=False)
+
+Spearman = zip_data_clean.corr(method="spearman", numeric_only=True)["CrimeRate"]
+
+corr = corr.reset_index()
+Spearman = Spearman.reset_index()
+
+corr.columns = ["Indicator", "Pearson"]
+Spearman.columns = ["Indicator", "Spearman"]
+
+corr_clean = corr[corr["Indicator"] != "CrimeRate"]
+spearman_clean = Spearman[Spearman["Indicator"] != "CrimeRate"]
+
+corr_clean["Pearson"] = corr_clean["Pearson"].abs()
+spearman_clean["Spearman"] = spearman_clean["Spearman"].abs()
+
+combined = corr_clean.merge(spearman_clean, on="Indicator")
+
+combined = combined.sort_values("Pearson", ascending=False)
+
+plot_data = combined.melt(
+    id_vars="Indicator",
+    var_name="Correlation Type",
+    value_name="Coefficient"
+)
+
+indicator_order = combined["Indicator"].tolist()
+
+chart = alt.Chart(plot_data).mark_bar().encode(
+    x=alt.X("Indicator:N", sort=indicator_order, title="Health Indicator", axis=alt.Axis(labelAngle=-30)),
+    y=alt.Y("Coefficient:Q", title="Correlation with Crime Rate"),
+    color="Correlation Type:N",
+    xOffset="Correlation Type"
+).properties(
+    title="Pearson vs Spearman Absolute Value Correlation Coefficient with Crime Rate",
+    width=450,
+    height=250
+)
+```
 
 After calculating the crime rate per 1,000 residents in each zip code, we calculated the correlation between the crime rate and each of our indicators of interest using two methods: the Pearson correlation coefficient and Spearman’s rank correlation coefficient, the latter being a nonparametric measure to account for potential nonlinear relationships. In our initial calculations, we found no evidence of strong correlation in any of the variables except Behavioral Health-Related Hospitalizations. Visualizing the data, we saw that three specific zip codes in the Loop (60602, 60603, and 60604) had low levels of social vulnerability across all the indicators but crime rates over 3X almost any other zip code. Given the numerous luxury apartment spaces in this area as well as the high density of people coming to the Loop every day who don’t live in those zip codes, it makes sense that these regions would be outliers in our data, and we removed these points from our analysis to account for this.
                  
-After removing these three points, the absolute value of both the Pearson and Spearman coefficients for all our indicators were over .5, indicating at least moderate correlation with the crime rate across the rest of the zip codes in the city. In the bar graph below, we can see that Behavioral Health-related Hospitalizations, Self-reported Mental Health and Self-reported Lacking Social/Emotional Support show the strongest correlations with a steep drop-off for the three index values. Somewhat surprisingly, this indicates that single-value statistics, including several self-reported measures, may be more accurate in predicting rates of crime, compared to index values that aggregate a range of statistics around poverty and social vulnerability.
+After removing these three points, the absolute value of both the Pearson and Spearman coefficients for all our indicators were over .5, indicating at least moderate correlation with the crime rate across the rest of the zip codes in the city. In the bar graph above, we can see that Behavioral Health-related Hospitalizations, Self-reported Mental Health and Self-reported Lacking Social/Emotional Support show the strongest correlations with a steep drop-off for the three index values. Somewhat surprisingly, this indicates that single-value statistics, including several self-reported measures, may be more accurate in predicting rates of crime, compared to index values that aggregate a range of statistics around poverty and social vulnerability.
 
-#Dashboard Link Here~~~~
+https://apprepository-s2kxjajnqkzwyg8ys7j2hm.streamlit.app/
 
 To better understand how rates of violent crime were distributed around Chicago, we created an interactive graph that charts the monthly crime rate from 2021-2025. The graph can also be split into different zip code percentile groups (ordered from lowest crime rate to highest). The model highlights that the top 5% of zip codes have substantially higher crime rates (with significantly greater seasonal variation in crime rates) than the bottom 95%. The average crime rate for these zip codes throughout the year is almost always over twice the peak values of any other percentile group.
 
 Additionally, we built a Streamlit dashboard that allows the user to explore ZIP-code-level patterns interactively. The dashboard displays a map of Chicago ZIP codes and includes a dropdown menu for selecting a metric, such as crime per 1,000 residents, hardship, childhood opportunity, or behavioral health-related hospitalization measures. A slider highlights the ZIP code whose selected metric is closest to a chosen value, while hovering over a ZIP code reveals a richer set of contextual statistics. Although not at the census tract level (which was necessary given that the tract level missed data), it functions as a useful exploratory and communication tool that allows us to assess the relationship between metrics and crime data directly and spatially.
 
-#conclusion?
+## Conclusion
+
+Our findings indicate that policy efforts by the city of Chicago to address violent crime should be specific, place-based policies targeting the 5% of zip codes with substantially higher rates of violent crime than the rest of the city. Additionally, while we didn't try to establish causality between any specific indicator, we found that single-statistic predictors like behavioral health-related hospitalizations and several self-reported mental health factors were strong predictors for the areas with the highest crime rates, exceeding the more comprehensive index values we looked at in predictive power.
 
 
